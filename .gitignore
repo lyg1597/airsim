@@ -2,3 +2,10 @@ baselines/__pycache__
 *pyc
 env/
 ADRL/
+*/.idea/
+*/.vscode/
+.vscode/ 
+.idea/
+**.png
+**.jpg
+baselines/picture_sc/

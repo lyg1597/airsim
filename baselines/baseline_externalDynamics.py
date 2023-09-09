@@ -7,8 +7,9 @@ import numpy as np
 import math
 from controller import simulate
 import transformations
-import rospy
+# import rospy
 from std_msgs.msg import Float64MultiArray
+import cv2
 
 def State(phase, idx=None, coord=None):
     return {'phase': phase, 'id': idx, 'coord': coord}
@@ -332,9 +333,9 @@ class BaselineRacer(object):
         )
 
     def run(self):
-        rospy.init_node('airsim', anonymous=True)
-        pub_x = rospy.Publisher('airsim/x', Float64MultiArray, queue_size=10)
-        pub_goal = rospy.Publisher('airsim/goal', Float64MultiArray, queue_size=10)
+        # rospy.init_node('airsim', anonymous=True)
+        # pub_x = rospy.Publisher('airsim/x', Float64MultiArray, queue_size=10)
+        # pub_goal = rospy.Publisher('airsim/goal', Float64MultiArray, queue_size=10)
 
         t = 0
         dt = 0.01
@@ -360,9 +361,18 @@ class BaselineRacer(object):
             print(np.array(x)[[0,4,8]], state['phase'], state['coord'])
             data = Float64MultiArray()
             data.data = np.array(x)
-            pub_x.publish(data)
+            # pub_x.publish(data)
             data.data = state['coord']
-            pub_goal.publish(data)
+            # pub_goal.publish(data)
+
+            request = [airsim.ImageRequest("fpv_cam", airsim.ImageType.Scene, False, False)]
+            response = self.airsim_client_images.simGetImages(request)
+            img_rgb_1d = np.fromstring(response[0].image_data_uint8, dtype=np.uint8)
+            img_rgb = img_rgb_1d.reshape(response[0].height, response[0].width, 3)
+            # if int(t*1000)%int(0.1*1000)==0:
+            cv2.imshow('Object detector', img_rgb)
+            cv2.waitKey(1)
+            
             x = simulate(x, state['coord'], dt)
             pose.position.x_val = x[0]
             pose.position.y_val = x[4]
@@ -525,7 +535,7 @@ if __name__ == "__main__":
             "Final_Tier_2",
             "Final_Tier_3",
         ],
-        default="ZhangJiaJie_Medium",
+        default="Final_Tier_2",
     )
     args = parser.parse_args()
     main(args)
