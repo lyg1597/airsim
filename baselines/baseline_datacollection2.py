@@ -1,12 +1,12 @@
 from argparse import ArgumentParser
-from http.client import GATEWAY_TIMEOUT
+# from http.client import GATEWAY_TIMEOUT
 import airsimdroneracinglab as airsim
 import threading
 import time
-import utils
+# import utils
 import numpy as np
 import math
-from controller import simulate
+# from controller import simulate
 import transformations
 # import rospy
 # from std_msgs.msg import Float64MultiArray
@@ -185,67 +185,8 @@ class BaselineRacer(object):
         self.airsim_client.confirmConnection()  # failsafe
         time.sleep(sleep_sec)  # let the environment load completely
 
-    # Starts an instance of a race in your given level, if valid
-    def start_race(self, tier=3):
-        self.airsim_client.simStartRace(tier)
-
-    # Resets a current race: moves players to start positions, timer and penalties reset
-    def reset_race(self):
-        self.airsim_client.simResetRace()
-
-    # arms drone, enable APIs, set default traj tracker gains
-    def initialize_drone(self):
-        self.airsim_client.enableApiControl(vehicle_name=self.drone_name)
-        self.airsim_client.arm(vehicle_name=self.drone_name)
-
-        # set default values for trajectory tracker gains
-        traj_tracker_gains = airsim.TrajectoryTrackerGains(
-            kp_cross_track=5.0,
-            kd_cross_track=0.0,
-            kp_vel_cross_track=3.0,
-            kd_vel_cross_track=0.0,
-            kp_along_track=0.4,
-            kd_along_track=0.0,
-            kp_vel_along_track=0.04,
-            kd_vel_along_track=0.0,
-            kp_z_track=2.0,
-            kd_z_track=0.0,
-            kp_vel_z=0.4,
-            kd_vel_z=0.0,
-            kp_yaw=3.0,
-            kd_yaw=0.1,
-        )
-
-        self.airsim_client.setTrajectoryTrackerGains(
-            traj_tracker_gains, vehicle_name=self.drone_name
-        )
-        time.sleep(0.2)
-
     def takeoffAsync(self):
         self.airsim_client.takeoffAsync().join()
-
-    # like takeoffAsync(), but with moveOnSpline()
-    def takeoff_with_moveOnSpline(self, takeoff_height=1.0):
-        start_position = self.airsim_client.simGetVehiclePose(
-            vehicle_name=self.drone_name
-        ).position
-        takeoff_waypoint = airsim.Vector3r(
-            start_position.x_val,
-            start_position.y_val,
-            start_position.z_val - takeoff_height,
-        )
-
-        self.airsim_client.moveOnSplineAsync(
-            [takeoff_waypoint],
-            vel_max=15.0,
-            acc_max=5.0,
-            add_position_constraint=True,
-            add_velocity_constraint=False,
-            add_acceleration_constraint=False,
-            viz_traj=self.viz_traj,
-            viz_traj_color_rgba=self.viz_traj_color_rgba,
-            vehicle_name=self.drone_name,
-        ).join()
 
     # stores gate ground truth poses as a list of airsim.Pose() objects in self.gate_poses_ground_truth
     def get_ground_truth_gate_poses(self):
@@ -322,133 +263,6 @@ class BaselineRacer(object):
             scale * gate_facing_vector[0],
             scale * gate_facing_vector[1],
             scale * gate_facing_vector[2],
-        )
-
-    def fly_through_all_gates_one_by_one_with_moveOnSpline(self):
-        if self.level_name == "Building99_Hard":
-            vel_max = 5.0
-            acc_max = 2.0
-
-        if self.level_name in [
-            "Soccer_Field_Medium",
-            "Soccer_Field_Easy",
-            "ZhangJiaJie_Medium",
-        ]:
-            vel_max = 10.0
-            acc_max = 5.0
-
-        return self.airsim_client.moveOnSplineAsync(
-            [gate_pose.position],
-            vel_max=vel_max,
-            acc_max=acc_max,
-            add_position_constraint=True,
-            add_velocity_constraint=False,
-            add_acceleration_constraint=False,
-            viz_traj=self.viz_traj,
-            viz_traj_color_rgba=self.viz_traj_color_rgba,
-            vehicle_name=self.drone_name,
-        )
-
-    def fly_through_all_gates_at_once_with_moveOnSpline(self):
-        if self.level_name in [
-            "Soccer_Field_Medium",
-            "Soccer_Field_Easy",
-            "ZhangJiaJie_Medium",
-            "Qualifier_Tier_1",
-            "Qualifier_Tier_2",
-            "Qualifier_Tier_3",
-            "Final_Tier_1",
-            "Final_Tier_2",
-            "Final_Tier_3",
-        ]:
-            vel_max = 30.0
-            acc_max = 15.0
-
-        if self.level_name == "Building99_Hard":
-            vel_max = 4.0
-            acc_max = 1.0
-
-        return self.airsim_client.moveOnSplineAsync(
-            [gate_pose.position for gate_pose in self.gate_poses_ground_truth],
-            vel_max=vel_max,
-            acc_max=acc_max,
-            add_position_constraint=True,
-            add_velocity_constraint=False,
-            add_acceleration_constraint=False,
-            viz_traj=self.viz_traj,
-            viz_traj_color_rgba=self.viz_traj_color_rgba,
-            vehicle_name=self.drone_name,
-        )
-
-    def fly_through_all_gates_one_by_one_with_moveOnSplineVelConstraints(self):
-        add_velocity_constraint = True
-        add_acceleration_constraint = False
-
-        if self.level_name in ["Soccer_Field_Medium", "Soccer_Field_Easy"]:
-            vel_max = 15.0
-            acc_max = 3.0
-            speed_through_gate = 2.5
-
-        if self.level_name == "ZhangJiaJie_Medium":
-            vel_max = 10.0
-            acc_max = 3.0
-            speed_through_gate = 1.0
-
-        if self.level_name == "Building99_Hard":
-            vel_max = 2.0
-            acc_max = 0.5
-            speed_through_gate = 0.5
-            add_velocity_constraint = False
-
-        # scale param scales the gate facing vector by desired speed.
-        return self.airsim_client.moveOnSplineVelConstraintsAsync(
-            [gate_pose.position],
-            [
-                self.get_gate_facing_vector_from_quaternion(
-                    gate_pose.orientation, scale=speed_through_gate
-                )
-            ],
-            vel_max=vel_max,
-            acc_max=acc_max,
-            add_position_constraint=True,
-            add_velocity_constraint=add_velocity_constraint,
-            add_acceleration_constraint=add_acceleration_constraint,
-            viz_traj=self.viz_traj,
-            viz_traj_color_rgba=self.viz_traj_color_rgba,
-            vehicle_name=self.drone_name,
-        )
-
-    def fly_through_all_gates_at_once_with_moveOnSplineVelConstraints(self):
-        if self.level_name in [
-            "Soccer_Field_Easy",
-            "Soccer_Field_Medium",
-            "ZhangJiaJie_Medium",
-        ]:
-            vel_max = 15.0
-            acc_max = 7.5
-            speed_through_gate = 2.5
-
-        if self.level_name == "Building99_Hard":
-            vel_max = 5.0
-            acc_max = 2.0
-            speed_through_gate = 1.0
-
-        return self.airsim_client.moveOnSplineVelConstraintsAsync(
-            [gate_pose.position for gate_pose in self.gate_poses_ground_truth],
-            [
-                self.get_gate_facing_vector_from_quaternion(
-                    gate_pose.orientation, scale=speed_through_gate
-                )
-                for gate_pose in self.gate_poses_ground_truth
-            ],
-            vel_max=vel_max,
-            acc_max=acc_max,
-            add_position_constraint=True,
-            add_velocity_constraint=True,
-            add_acceleration_constraint=False,
-            viz_traj=self.viz_traj,
-            viz_traj_color_rgba=self.viz_traj_color_rgba,
-            vehicle_name=self.drone_name,
         )
 
     def apply_effect(self, image, effect_idx):
@@ -706,29 +520,6 @@ class BaselineRacer(object):
                             res_list.append(res)
         return res_list 
 
-    def next_state(self, curr_pose, state):
-        if state['phase'] == 'init':
-            state = State('before', 0, self.before_gate(0))
-        else:
-            threshold = 0.1
-            if distance(np.array(curr_pose)[[0,4,8]], state['coord']) < threshold:
-                if state['phase'] == 'before':
-                    state['phase'] = 'center'
-                    state['coord'] = self.center_gate(state['id'])
-                elif state['phase'] == 'center':
-                    state['phase'] = 'after'
-                    state['coord'] = self.after_gate(state['id'])
-                elif state['phase'] == 'after':
-                    state['phase'] = 'before'
-                    if state['id'] == len(self.gate_poses_ground_truth) - 1:
-                        state['phase'] = 'terminate'
-                    else:
-                        state['id'] += 1
-                        state['coord'] = self.before_gate(state['id'])
-                else:
-                    raise ValueError('wrong state')
-        return state
-
     def before_gate(self, idx):
         gate_pose = self.gate_poses_ground_truth[idx]
         return to_list(gate_pose.position - self.get_gate_facing_vector_from_quaternion(gate_pose.orientation, scale=1.0))
@@ -770,30 +561,6 @@ class BaselineRacer(object):
         while self.is_odometry_thread_active:
             task()
             time.sleep(period)
-
-    def start_image_callback_thread(self):
-        if not self.is_image_thread_active:
-            self.is_image_thread_active = True
-            self.image_callback_thread.start()
-            print("Started image callback thread")
-
-    def stop_image_callback_thread(self):
-        if self.is_image_thread_active:
-            self.is_image_thread_active = False
-            self.image_callback_thread.join()
-            print("Stopped image callback thread.")
-
-    def start_odometry_callback_thread(self):
-        if not self.is_odometry_thread_active:
-            self.is_odometry_thread_active = True
-            self.odometry_callback_thread.start()
-            print("Started odometry callback thread")
-
-    def stop_odometry_callback_thread(self):
-        if self.is_odometry_thread_active:
-            self.is_odometry_thread_active = False
-            self.odometry_callback_thread.join()
-            print("Stopped odometry callback thread.")
 
 def compute_accuracy(rm, dataset):
     num_accurate = 0
