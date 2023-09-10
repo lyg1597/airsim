@@ -535,7 +535,7 @@ if __name__ == "__main__":
             "Final_Tier_2",
             "Final_Tier_3",
         ],
-        default="Final_Tier_2",
+        default="Qualifier_Tier_3",
     )
     args = parser.parse_args()
     main(args)
