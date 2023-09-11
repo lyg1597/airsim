@@ -9,3 +9,6 @@ ADRL/
 **.png
 **.jpg
 baselines/picture_sc/
+venv/
+baselines/data/
+baselines/img/

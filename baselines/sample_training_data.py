@@ -29,6 +29,14 @@ PATH_TO_LABELS = os.path.join(CWD_PATH, './object_detection', 'labelmap.pbtxt')
 
 NUM_CLASSES = 1
 
+script_dir = os.path.dirname(os.path.realpath(__file__))
+data_path = os.path.join(script_dir, './data/')
+if not os.path.exists(data_path):
+    os.makedirs(data_path)
+img_path = os.path.join(script_dir, './img/')
+if not os.path.exists(img_path):
+    os.makedirs(img_path)
+
 label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
 categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES,
                                                             use_display_name=True)
@@ -361,24 +369,168 @@ class BaselineRacer(object):
             image = image 
         return image 
 
+    def sample_drone_pose(self, gate_pos:np.ndarray, gate_ori: R, gate_dist: float):
+        max_dist = gate_dist - 3.5-1
+        drone_pos_dist = np.random.uniform(max_dist)
+        if drone_pos_dist > 30:
+            drone_pos_dist = 30
+        drone_pos_ori = np.random.uniform(-np.arctan2(10, 13.5),np.arctan2(10, 13.5))
+        drone_height = np.random.uniform(-4/(17-3.5)*drone_pos_dist, 4/(17-3.5)*drone_pos_dist)
+        drone_yaw = np.random.uniform(-drone_pos_dist*(20*np.pi/180)/(17-3.5),drone_pos_dist*(20*np.pi/180)/(17-3.5))
+        drone_pitch = np.random.uniform(-drone_pos_dist*(10*np.pi/180)/(17-3.5),drone_pos_dist*(10*np.pi/180)/(17-3.5))
+
+        x_offset = np.cos(drone_pos_ori)*drone_pos_dist + 3.5
+        y_offset = np.sin(drone_pos_ori)*drone_pos_dist + np.random.uniform(1.0)
+        z_offset = drone_height
+        yaw_offset = drone_yaw+np.pi/2
+        pitch_offset = drone_pitch
+
+        gate_angle = gate_ori.as_euler('xyz')
+        gate_angle[2] = gate_angle[2]+np.pi/2
+        tmp = R.from_euler('xyz', gate_angle)
+
+        offsets = tmp.apply(np.array([x_offset, y_offset, z_offset]))
+        result_pos = -offsets + gate_pos
+        if result_pos[2] > 15:
+            result_pos[2] = 15
+        gate_yaw = gate_ori.as_euler('xyz')[2]
+        result_yaw = yaw_offset + gate_yaw
+        result_pitch = pitch_offset
+
+        return result_pos, np.array([0, result_pitch, result_yaw])
+
     def run(self, num_sample):
+        data_fn = os.path.join(data_path, f"data.txt")
+        with open(data_fn,'w+') as f:
+            pass  
+        kp_fn = os.path.join(data_path, 'kp.txt')
+        with open(data_fn,'w+') as f:
+            pass
         for i in range(num_sample):
-            gate_idx = np.random.randint(len(self.gate_name_list))
-            gate_name = self.gate_name_list(gate_idx)
+            gate_idx = np.random.randint(len(self.gate_names_list))
+            # gate_idx = 20
+            gate_name = self.gate_names_list[gate_idx]
             
             gate_pose = self.gate_poses_ground_truth[gate_idx]
 
-            gate_pos = [
-                gate_pos.position.x_val,
-                gate_pos.position.y_val,
-                gate_pos.position.z_val
-            ]
+            gate_pos = np.array([
+                gate_pose.position.x_val,
+                gate_pose.position.y_val,
+                gate_pose.position.z_val
+            ])
             
             if gate_idx != 0:
                 pre_gate_idx = gate_idx - 1
                 pre_gate_pose = self.gate_poses_ground_truth[pre_gate_idx]
-                gate_dist = 
+                pre_gate_pos = np.array([
+                    pre_gate_pose.position.x_val,
+                    pre_gate_pose.position.y_val,
+                    pre_gate_pose.position.z_val
+                ])
+                gate_dist = np.linalg.norm(gate_pos - pre_gate_pos)
+            else:
+                gate_dist = 10
 
+            gate_ori = [
+                gate_pose.orientation.x_val,
+                gate_pose.orientation.y_val,
+                gate_pose.orientation.z_val,
+                gate_pose.orientation.w_val,            
+            ]
+
+            inner_gd = self.airsim_client.simGetNominalGateInnerDimensions()
+            outer_gd = self.airsim_client.simGetNominalGateOuterDimensions()
+
+            gs = self.airsim_client.simGetObjectScale(gate_name)
+            r:R = R.from_quat(gate_ori)
+            yaw = r.as_euler('xyz')[2]
+            gate_x_offset_inner = [np.cos(yaw)*inner_gd.x_val*gs.x_val, np.sin(yaw)*inner_gd.x_val*gs.x_val]
+            gate_x_offset_outer = [np.cos(yaw)*outer_gd.x_val*gs.x_val, np.sin(yaw)*outer_gd.x_val*gs.x_val]
+            gate_y_offset = [-np.sin(yaw)*inner_gd.y_val*gs.y_val/2, np.cos(yaw)*inner_gd.y_val*gs.y_val/2]
+            gate_z_offset_inner = inner_gd.z_val*gs.z_val 
+            gate_z_offset_outer = outer_gd.z_val*gs.z_val 
+            gate_vert_inner = [
+                [
+                    gate_pos[0]+gate_x_offset_inner[0]-gate_y_offset[0], 
+                    gate_pos[1]+gate_x_offset_inner[1]-gate_y_offset[1],
+                    gate_pos[2]+gate_z_offset_inner
+                ],
+                [
+                    gate_pos[0]-gate_x_offset_inner[0]-gate_y_offset[0], 
+                    gate_pos[1]-gate_x_offset_inner[1]-gate_y_offset[1],
+                    gate_pos[2]+gate_z_offset_inner
+                ],
+                [
+                    gate_pos[0]-gate_x_offset_inner[0]-gate_y_offset[0], 
+                    gate_pos[1]-gate_x_offset_inner[1]-gate_y_offset[1],
+                    gate_pos[2]-gate_z_offset_inner
+                ],
+                [
+                    gate_pos[0]+gate_x_offset_inner[0]-gate_y_offset[0], 
+                    gate_pos[1]+gate_x_offset_inner[1]-gate_y_offset[1],
+                    gate_pos[2]-gate_z_offset_inner
+                ],
+            ]    
+            gate_vert_outer = [
+                [
+                    gate_pos[0]+gate_x_offset_outer[0]-gate_y_offset[0], 
+                    gate_pos[1]+gate_x_offset_outer[1]-gate_y_offset[1],
+                    gate_pos[2]+gate_z_offset_outer
+                ],
+                [
+                    gate_pos[0]-gate_x_offset_outer[0]-gate_y_offset[0], 
+                    gate_pos[1]-gate_x_offset_outer[1]-gate_y_offset[1],
+                    gate_pos[2]+gate_z_offset_outer
+                ],
+                [
+                    gate_pos[0]-gate_x_offset_outer[0]-gate_y_offset[0], 
+                    gate_pos[1]-gate_x_offset_outer[1]-gate_y_offset[1],
+                    gate_pos[2]-gate_z_offset_outer
+                ],
+                [
+                    gate_pos[0]+gate_x_offset_outer[0]-gate_y_offset[0], 
+                    gate_pos[1]+gate_x_offset_outer[1]-gate_y_offset[1],
+                    gate_pos[2]-gate_z_offset_outer
+                ],
+            ]         
+
+            pose = self.airsim_client.simGetVehiclePose(vehicle_name = self.drone_name)
+            # pose.position.x_val = gate_pos[0]
+            # pose.position.y_val = gate_pos[1]-17
+            # pose.position.z_val = gate_pos[2]
+            # pose.orientation.x_val = 0
+            # pose.orientation.y_val = 0
+            # pose.orientation.z_val = 0.7071068
+            # pose.orientation.w_val = 0.7071068
+            drone_pos, drone_ori = self.sample_drone_pose(gate_pos, r, gate_dist)
+            pose.position.x_val = drone_pos[0]
+            pose.position.y_val = drone_pos[1]
+            pose.position.z_val = drone_pos[2]
+            quat = R.from_euler('xyz', drone_ori).as_quat()
+            pose.orientation.x_val = quat[0]
+            pose.orientation.y_val = quat[1]
+            pose.orientation.z_val = quat[2]
+            pose.orientation.w_val = quat[3]
+            self.airsim_client.simSetVehiclePose(pose = pose, vehicle_name = self.drone_name, ignore_collison=True)
+            with open(data_fn, 'a') as f:
+                f.write(f"{i},{pose.position.x_val},{pose.position.y_val},{pose.position.z_val},{pose.orientation.x_val},{pose.orientation.y_val},{pose.orientation.z_val},{pose.orientation.w_val}, {gate_idx}\n")
+            with open(kp_fn, 'a') as f:
+                kp_str = f'{i}, {gate_vert_inner[0][0]}, {gate_vert_inner[0][1]}, {gate_vert_inner[0][2]}'
+                for j in range(1, len(gate_vert_inner)):
+                    kp_str += f',{gate_vert_inner[j][0]}, {gate_vert_inner[j][1]}, {gate_vert_inner[j][2]}'
+                for j in range(len(gate_vert_outer)):
+                    kp_str += f',{gate_vert_outer[j][0]}, {gate_vert_outer[j][1]}, {gate_vert_outer[j][2]}'
+                kp_str += f",{gate_idx}\n"
+                f.write(kp_str)
+            request = [airsim.ImageRequest("fpv_cam", airsim.ImageType.Scene, False, False)]
+            response = self.airsim_client_images.simGetImages(request)
+            img_rgb_1d = np.fromstring(response[0].image_data_uint8, dtype=np.uint8)
+            img_rgb = img_rgb_1d.reshape(response[0].height, response[0].width, 3)
+            cv2.imshow('Object detector', img_rgb)
+            cv2.waitKey(1)
+            img_fn = os.path.join(img_path, f'./img_{i}.png')
+            cv2.imwrite(img_fn, img_rgb)
+            
         pass
 
     def before_gate(self, idx):
@@ -534,7 +686,7 @@ def main(args):
     # yaw_vector = -1.371073 - gate_yaw
     # gate_vector = np.append(gate_vector, yaw_vector)
     # Specify the number of samples we want
-    num_sample = 10000
+    num_sample = 100
 
     # gate_idx_list = [0,1,2,3,4,5,6,7,8,9,11,12,15,16,17,18]
     # gate_idx_list = [6]
@@ -542,9 +694,9 @@ def main(args):
     # Randomly sample position and inference gate position
     res = baseline_racer.run(num_sample)
     # Compute the inferencing accuracy
-    estimated_pos_list = compute_accuracy(1, res)
+    # estimated_pos_list = compute_accuracy(1, res)
 
-    visualize(res,estimated_pos_list)
+    # visualize(res,estimated_pos_list)
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -563,7 +715,7 @@ if __name__ == "__main__":
             "Final_Tier_2",
             "Final_Tier_3",
         ],
-        default="Final_Tier_2",
+        default="Qualifier_Tier_3",
     )
     args = parser.parse_args()
     main(args)
