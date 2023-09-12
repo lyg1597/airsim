@@ -1,0 +1,14 @@
+*.pyc
+__pycache__/
+checkpoints/
+*.pth
+venv/
+.idea/
+wandb/
+.vscode/
+data/masks/
+data/label/
+data/imgs/
+data/label_kp/
+data/imgs_batch/
+data/label_kp_batch/
