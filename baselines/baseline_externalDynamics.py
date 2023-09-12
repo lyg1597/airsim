@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 import airsimdroneracinglab as airsim
-import cv2
 import threading
 import time
 import utils
@@ -8,6 +7,9 @@ import numpy as np
 import math
 from controller import simulate
 import transformations
+# import rospy
+from std_msgs.msg import Float64MultiArray
+import cv2
 
 def State(phase, idx=None, coord=None):
     return {'phase': phase, 'id': idx, 'coord': coord}
@@ -195,7 +197,8 @@ class BaselineRacer(object):
                 [q[1, 3] - q[2, 0], q[2, 3] + q[1, 0], 1.0 - q[1, 1] - q[2, 2]],
             ]
         )
-        gate_facing_vector = rotation_matrix[:, 1]
+        gate_facing_vector = rotation_matrix[:3, 1]
+        gate_facing_vector = gate_facing_vector / (np.sqrt((gate_facing_vector**2).sum()))
         return airsim.Vector3r(
             scale * gate_facing_vector[0],
             scale * gate_facing_vector[1],
@@ -330,8 +333,12 @@ class BaselineRacer(object):
         )
 
     def run(self):
+        # rospy.init_node('airsim', anonymous=True)
+        # pub_x = rospy.Publisher('airsim/x', Float64MultiArray, queue_size=10)
+        # pub_goal = rospy.Publisher('airsim/goal', Float64MultiArray, queue_size=10)
+
         t = 0
-        dt = 0.05
+        dt = 0.01
         state = State('init')
         pose = self.airsim_client.simGetVehiclePose(
             vehicle_name=self.drone_name
@@ -346,17 +353,31 @@ class BaselineRacer(object):
             dtype=np.float64,
         )
         theta_x, theta_y, theta_z = transformations.euler_from_quaternion(q)
-        x = [pose.position.x_val, 0, pose.position.y_val, 0, pose.position.z_val, 0, theta_x, 0, theta_y, 0, theta_z, 0]
+        x = [pose.position.x_val, 0, theta_x, 0, pose.position.y_val, 0, theta_y, 0, pose.position.z_val, 0]
         while True:
             if state['phase'] == 'terminate':
                 break
             state = self.next_state(x, state)
-            print(np.array(x)[[0,2,4]], state['coord'])
+            print(np.array(x)[[0,4,8]], state['phase'], state['coord'])
+            data = Float64MultiArray()
+            data.data = np.array(x)
+            # pub_x.publish(data)
+            data.data = state['coord']
+            # pub_goal.publish(data)
+
+            request = [airsim.ImageRequest("fpv_cam", airsim.ImageType.Scene, False, False)]
+            response = self.airsim_client_images.simGetImages(request)
+            img_rgb_1d = np.fromstring(response[0].image_data_uint8, dtype=np.uint8)
+            img_rgb = img_rgb_1d.reshape(response[0].height, response[0].width, 3)
+            # if int(t*1000)%int(0.1*1000)==0:
+            cv2.imshow('Object detector', img_rgb)
+            cv2.waitKey(1)
+            
             x = simulate(x, state['coord'], dt)
             pose.position.x_val = x[0]
-            pose.position.y_val = x[2]
-            pose.position.z_val = x[4]
-            q = transformations.quaternion_from_euler(x[6], x[8], x[10])
+            pose.position.y_val = x[4]
+            pose.position.z_val = x[8]
+            q = transformations.quaternion_from_euler(x[2], x[6], 0)
             pose.orientation.w_val = q[0]
             pose.orientation.x_val = q[1]
             pose.orientation.y_val = q[2]
@@ -366,27 +387,29 @@ class BaselineRacer(object):
                 ignore_collison=True
             )
             t += dt
-            time.sleep(0.1)
+            time.sleep(0.01)
 
     def next_state(self, curr_pose, state):
         if state['phase'] == 'init':
             state = State('before', 0, self.before_gate(0))
         else:
             threshold = 0.1
-            if distance(np.array(curr_pose)[[0,2,4]], state['coord']) < threshold:
+            if distance(np.array(curr_pose)[[0,4,8]], state['coord']) < threshold:
                 if state['phase'] == 'before':
                     state['phase'] = 'center'
                     state['coord'] = self.center_gate(state['id'])
-                if state['phase'] == 'center':
+                elif state['phase'] == 'center':
                     state['phase'] = 'after'
                     state['coord'] = self.after_gate(state['id'])
-                if state['phase'] == 'after':
+                elif state['phase'] == 'after':
                     state['phase'] = 'before'
                     if state['id'] == len(self.gate_poses_ground_truth) - 1:
                         state['phase'] = 'terminate'
                     else:
                         state['id'] += 1
                         state['coord'] = self.before_gate(state['id'])
+                else:
+                    raise ValueError('wrong state')
         return state
 
     def before_gate(self, idx):
@@ -512,7 +535,7 @@ if __name__ == "__main__":
             "Final_Tier_2",
             "Final_Tier_3",
         ],
-        default="ZhangJiaJie_Medium",
+        default="Qualifier_Tier_3",
     )
     args = parser.parse_args()
     main(args)
