@@ -404,9 +404,10 @@ class BaselineRacer(object):
         with open(data_fn,'w+') as f:
             pass  
         kp_fn = os.path.join(data_path, 'kp.txt')
-        with open(data_fn,'w+') as f:
+        with open(kp_fn,'w+') as f:
             pass
         for i in range(num_sample):
+            print(f">>> {i}")
             gate_idx = np.random.randint(len(self.gate_names_list))
             # gate_idx = 20
             gate_name = self.gate_names_list[gate_idx]
@@ -444,11 +445,11 @@ class BaselineRacer(object):
             gs = self.airsim_client.simGetObjectScale(gate_name)
             r:R = R.from_quat(gate_ori)
             yaw = r.as_euler('xyz')[2]
-            gate_x_offset_inner = [np.cos(yaw)*inner_gd.x_val*gs.x_val, np.sin(yaw)*inner_gd.x_val*gs.x_val]
-            gate_x_offset_outer = [np.cos(yaw)*outer_gd.x_val*gs.x_val, np.sin(yaw)*outer_gd.x_val*gs.x_val]
+            gate_x_offset_inner = [np.cos(yaw)*inner_gd.x_val*gs.x_val/2, np.sin(yaw)*inner_gd.x_val*gs.x_val/2]
+            gate_x_offset_outer = [np.cos(yaw)*outer_gd.x_val*gs.x_val/2, np.sin(yaw)*outer_gd.x_val*gs.x_val/2]
             gate_y_offset = [-np.sin(yaw)*inner_gd.y_val*gs.y_val/2, np.cos(yaw)*inner_gd.y_val*gs.y_val/2]
-            gate_z_offset_inner = inner_gd.z_val*gs.z_val 
-            gate_z_offset_outer = outer_gd.z_val*gs.z_val 
+            gate_z_offset_inner = inner_gd.z_val*gs.z_val/2 
+            gate_z_offset_outer = outer_gd.z_val*gs.z_val/2
             gate_vert_inner = [
                 [
                     gate_pos[0]+gate_x_offset_inner[0]-gate_y_offset[0], 
@@ -512,6 +513,11 @@ class BaselineRacer(object):
             pose.orientation.z_val = quat[2]
             pose.orientation.w_val = quat[3]
             self.airsim_client.simSetVehiclePose(pose = pose, vehicle_name = self.drone_name, ignore_collison=True)
+            if np.linalg.norm(
+                np.array([pose.position.x_val, pose.position.y_val, pose.position.z_val])-
+                np.array([gate_vert_inner[0][0],gate_vert_inner[0][1],gate_vert_inner[0][2]])
+            ) > gate_dist:
+                print("stop")
             with open(data_fn, 'a') as f:
                 f.write(f"{i},{pose.position.x_val},{pose.position.y_val},{pose.position.z_val},{pose.orientation.x_val},{pose.orientation.y_val},{pose.orientation.z_val},{pose.orientation.w_val}, {gate_idx}\n")
             with open(kp_fn, 'a') as f:
@@ -686,7 +692,7 @@ def main(args):
     # yaw_vector = -1.371073 - gate_yaw
     # gate_vector = np.append(gate_vector, yaw_vector)
     # Specify the number of samples we want
-    num_sample = 100
+    num_sample = 100000
 
     # gate_idx_list = [0,1,2,3,4,5,6,7,8,9,11,12,15,16,17,18]
     # gate_idx_list = [6]

@@ -12,3 +12,6 @@ baselines/picture_sc/
 venv/
 baselines/data/
 baselines/img/
+baselines/label/
+.vscode/
+**/wandb/
