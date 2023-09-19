@@ -107,7 +107,11 @@ if __name__ == '__main__':
     in_files = args.input
     out_files = get_output_filenames(args)
 
+<<<<<<< HEAD
     net = UNet(n_channels=3, n_classes=16, bilinear=args.bilinear)
+=======
+    net = UNet(n_channels=3, n_classes=14, bilinear=args.bilinear)
+>>>>>>> 0f70cc2 (reset git)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model}')
@@ -159,12 +163,21 @@ if __name__ == '__main__':
         p12[0].reverse()
         p13 = (((output[0,5+8,:,:]==torch.max(output[0,5+8,:,:])).nonzero())/args.scale).tolist()
         p13[0].reverse()
+<<<<<<< HEAD
         p14 = (((output[0,6+8,:,:]==torch.max(output[0,6+8,:,:])).nonzero())/args.scale).tolist()
         p14[0].reverse()
         p15 = (((output[0,7+8,:,:]==torch.max(output[0,7+8,:,:])).nonzero())/args.scale).tolist()
         p15[0].reverse()
 
         kps = p0+p1+p2+p3+p4+p5+p6+p7+p8+p9+p10+p11+p12+p13+p14+p15
+=======
+        # p14 = (((output[0,6+8,:,:]==torch.max(output[0,6+8,:,:])).nonzero())/args.scale).tolist()
+        # p14[0].reverse()
+        # p15 = (((output[0,7+8,:,:]==torch.max(output[0,7+8,:,:])).nonzero())/args.scale).tolist()
+        # p15[0].reverse()
+
+        kps = p0+p1+p2+p3+p4+p5+p6+p7+p8+p9+p10+p11+p12+p13
+>>>>>>> 0f70cc2 (reset git)
 
         # # print(np.max(mask))
         # # print(np.min(mask))
